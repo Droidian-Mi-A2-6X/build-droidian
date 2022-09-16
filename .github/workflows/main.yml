@@ -1,0 +1,40 @@
+name: BUILD CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  workflow_dispatch:
+
+env:
+  VENDOR : xiaomi
+  MODEL : jasmine
+  KERNEL_REPO_BRANCH : bullseye-9
+  RENAMED_REPO_BRANCH : bookworm
+  PACKAGING_REPO_BRANCH : bookworm
+  PACKAGES_DIR : ${{ github.workspace }}/packages
+  PACKAGING_DIR : ${{ github.workspace }}/linux-android-xiaomi-jasmine-sprout-packaging
+  KERNEL_REPO_URL : https://github.com/Droidian-Mi-A2-6X/linux-android-xiaomi-wayne-jasmine
+  PACKAGING_REPO_URL : https://github.com/Droidian-Mi-A2-6X/linux-android-xiaomi-jasmine-sprout-packaging
+  KERNEL_DIR : ${{ github.workspace }}/kernel/$VENDOR/$MODEL
+  GH_TOKEN : ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build
+        run: |
+             mkdir -p ${{ env.PACKAGES_DIR }}
+             git clone ${{env.KERNEL_REPO_URL}} -b ${{env.KERNEL_REPO_BRANCH}} ${{env.KERNEL_DIR}} --depth=1 && git -C ${{env.KERNEL_DIR}} checkout -b ${{env.RENAMED_REPO_BRANCH}} && git clone ${{env.PACKAGING_REPO_URL}} -b ${{env.PACKAGING_REPO_BRANCH}}
+             docker run --rm -v $PACKAGES_DIR:/buildd -v ${{env.KERNEL_DIR}}:/buildd/sources -v ${{env.PACKAGING_DIR}}:/buildd/sources/debian quay.io/droidian/build-essential:bookworm-amd64 bash -c "cd /buildd/sources && RELENG_HOST_ARCH="arm64" releng-build-package"
+             zip -r packages.zip $PACKAGES_DIR
+
+      - name: Release
+        run: gh release create $((echo $[ $RANDOM % 99 + 10 ] ; date -u +%D ; ) | tr -d '\n,/') packages.zip ${{env.KERNEL_DIR}}/out/KERNEL_OBJ/boot.img --notes "$(date)" --repo https://github.com/${GITHUB_REPOSITORY}
+
